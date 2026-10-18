@@ -8,8 +8,8 @@ export type GoalZone = 'insideBox' | 'outsideBox' | 'penalty' | 'freeKick';
 export const GOAL_ZONES: readonly GoalZone[] = ['insideBox', 'outsideBox', 'freeKick', 'penalty'];
 
 /** Partie du corps utilisée pour marquer. */
-export type BodyPart = 'left' | 'right' | 'head';
-export const BODY_PARTS: readonly BodyPart[] = ['left', 'right', 'head'];
+export type BodyPart = 'left' | 'right' | 'head' | 'other';
+export const BODY_PARTS: readonly BodyPart[] = ['left', 'right', 'head', 'other'];
 
 export type TeamKind = 'club' | 'national';
 
@@ -55,10 +55,22 @@ export interface CompetitionLine {
   assists?: number;
 }
 
+/** Réussite de référence : buts marqués sur tentatives, dans un périmètre donné. */
+export interface RateRef {
+  scored: number;
+  attempts: number;
+  scope: string;
+  source: Source;
+}
+
+/** Famille de trophée (détermine le modèle affiché dans la vitrine 3D). */
+export type TrophyKind = 'ballon' | 'wc' | 'cont' | 'ucl' | 'league' | 'cwc' | 'boot' | 'olym';
+
 export interface Honour {
+  id: TrophyKind;
   label: string;
-  count: number;
-  detail?: string;
+  /** Un élément par trophée (année ou compétition + année). */
+  items: string[];
 }
 
 export interface PlayerBaseline {
@@ -84,6 +96,8 @@ export interface PlayerBaseline {
   seasons: SeasonLine[];
   zones: Breakdown<GoalZone>;
   bodyParts: Breakdown<BodyPart>;
+  /** Taux de réussite connus : penalties, coups francs directs et ensemble des tirs. */
+  conversion: { penalty: RateRef; freeKick: RateRef; allShots: RateRef };
   competitions: CompetitionLine[];
   honours: Honour[];
 }
@@ -112,6 +126,23 @@ export interface GoalDetail {
   zone: GoalZone | null;
   bodyPart: BodyPart | null;
   description?: string;
+}
+
+/** Tentatives et buts par zone dans un match, tirés du fil d'actions (même source pour les deux). */
+export type ZoneAttempts = Record<GoalZone, { shots: number; goals: number }>;
+
+/** Statistiques complémentaires fournies par API-Football. */
+export interface MatchExtra {
+  source: 'API-Football';
+  fixtureId: number;
+  rating: number | null;
+  keyPasses: number | null;
+  passes: number | null;
+  passAccuracy: number | null;
+  dribblesAttempted: number | null;
+  dribblesSucceeded: number | null;
+  duelsWon: number | null;
+  duelsTotal: number | null;
 }
 
 /** Ligne de stats d'un joueur pour un match suivi (en cours ou terminé). */
@@ -145,6 +176,9 @@ export interface PlayerMatch {
   yellowCards: number;
   redCards: number;
   goalDetails: GoalDetail[];
+  /** Tirs par zone (null si le fil d'actions détaillé n'est pas disponible). */
+  attempts: ZoneAttempts | null;
+  extra?: MatchExtra;
 }
 
 export interface Fixture {
@@ -159,6 +193,14 @@ export interface Fixture {
 
 export type LiveStatus = 'starting' | 'ok' | 'degraded' | 'offline' | 'disabled';
 
+export interface QuotaInfo {
+  provider: string;
+  used: number;
+  /** Plafond que l'application s'impose (inférieur à la limite du forfait). */
+  cap: number;
+  limit: number;
+}
+
 export interface LiveInfo {
   provider: string;
   status: LiveStatus;
@@ -166,6 +208,9 @@ export interface LiveInfo {
   lastError: string | null;
   /** Intervalle de rafraîchissement actuel côté serveur, en secondes. */
   refreshSeconds: number | null;
+  /** Le serveur pousse les mises à jour (SSE) ; sinon le navigateur interroge /api/state. */
+  push: boolean;
+  quota: QuotaInfo | null;
 }
 
 export interface PlayerLiveData {
@@ -196,6 +241,19 @@ export interface Delta {
   bodyParts: Record<BodyPart, number>;
   /** Buts dont la zone n'a pas pu être déterminée à partir du commentaire. */
   unclassifiedGoals: number;
+  /** Tentatives par zone, sur les matchs dont le fil d'actions détaillé est disponible. */
+  attempts: ZoneAttempts;
+  detailedMatches: number;
+}
+
+/** Taux de réussite d'une zone, avec son périmètre. */
+export interface ZoneRate {
+  scored: number;
+  attempts: number;
+  rate: number | null;
+  /** Échantillon assez grand pour comparer les zones entre elles. */
+  sufficient: boolean;
+  scope: string;
 }
 
 export interface PlayerTotals {
@@ -217,6 +275,7 @@ export interface PlayerState {
   seasons: SeasonLine[];
   zones: Record<GoalZone, number>;
   bodyParts: Record<BodyPart, number>;
+  conversion: Record<GoalZone, ZoneRate>;
   recent: PlayerMatch[];
   live: PlayerMatch | null;
   next: Fixture | null;

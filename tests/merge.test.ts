@@ -1,17 +1,17 @@
 import { describe, expect, it } from 'vitest';
 import { baseline } from '../shared/baseline.ts';
-import { buildAppState, buildPlayerState, emptyLiveData } from '../shared/merge.ts';
+import { bestAndWorstZones, buildAppState, buildPlayerState, emptyAttempts, emptyLiveData, MIN_ATTEMPTS_FOR_RANKING } from '../shared/merge.ts';
 import { ageAt, efficiency, seasonFor, seasonMidpoint } from '../shared/metrics.ts';
 import type { LiveInfo, PlayerMatch } from '../shared/types.ts';
 
-const info: LiveInfo = { provider: 'test', status: 'ok', lastSuccessAt: null, lastError: null, refreshSeconds: 30 };
+const info: LiveInfo = { provider: 'test', status: 'ok', lastSuccessAt: null, lastError: null, refreshSeconds: 30, push: false, quota: null };
 
 function match(over: Partial<PlayerMatch> = {}): PlayerMatch {
   return {
     eventId: '1',
     league: 'usa.1',
     competition: 'MLS',
-    date: '2026-10-17T23:30:00Z',
+    date: '2026-10-24T21:30:00Z',
     season: '2026',
     state: 'post',
     statusDetail: 'FT',
@@ -35,6 +35,12 @@ function match(over: Partial<PlayerMatch> = {}): PlayerMatch {
       { minute: "21'", zone: 'freeKick', bodyPart: 'left' },
       { minute: "71'", zone: 'insideBox', bodyPart: 'left' },
     ],
+    attempts: {
+      insideBox: { shots: 3, goals: 1 },
+      outsideBox: { shots: 2, goals: 0 },
+      freeKick: { shots: 1, goals: 1 },
+      penalty: { shots: 0, goals: 0 },
+    },
     ...over,
   };
 }
@@ -58,13 +64,17 @@ describe('buildPlayerState', () => {
     expect(s.zones.freeKick).toBe(messi.zones.parts.freeKick + 1);
     expect(s.zones.insideBox).toBe(messi.zones.parts.insideBox + 1);
     expect(s.bodyParts.left).toBe(messi.bodyParts.parts.left + 2);
-    expect(s.teams.find((t) => t.key === 'inter-miami')).toMatchObject({ apps: 120, goals: 106 });
-    expect(s.seasons.find((x) => x.season === '2026')).toMatchObject({ apps: 32, goals: 29 });
+    expect(s.teams.find((t) => t.key === 'inter-miami')).toMatchObject({ apps: 121, goals: 108 });
+    expect(s.seasons.find((x) => x.season === '2026')).toMatchObject({ apps: 33, goals: 31 });
     expect(s.delta.shots).toBe(5);
+    expect(s.delta.attempts.freeKick).toEqual({ shots: 1, goals: 1 });
+    // Coups francs : référence (50 / 538) + tentative suivie (1 / 1).
+    expect(s.conversion.freeKick).toMatchObject({ scored: 51, attempts: 539, sufficient: true });
+    expect(s.conversion.insideBox).toMatchObject({ scored: 1, attempts: 3, sufficient: false });
   });
 
   it('ignore les matchs déjà inclus dans la référence', () => {
-    const old = match({ eventId: 'old', date: '2026-10-10T00:00:00Z' });
+    const old = match({ eventId: 'old', date: '2026-10-17T23:30:00Z' });
     const s = buildPlayerState(messi, { completed: [old], live: null, next: null }, baseline.asOf);
     expect(s.totals.goals).toBe(messi.totals.goals);
     expect(s.recent).toHaveLength(0);
@@ -78,7 +88,7 @@ describe('buildPlayerState', () => {
   });
 
   it('inclut le match en cours et isole sa contribution', () => {
-    const live = match({ eventId: '2', state: 'in', date: '2026-10-25T20:00:00Z', goals: 3, assists: 0, minutes: 60, goalDetails: [] });
+    const live = match({ eventId: '2', state: 'in', date: '2026-10-28T23:30:00Z', goals: 3, assists: 0, minutes: 60, goalDetails: [], attempts: null });
     const s = buildPlayerState(messi, { completed: [match()], live, next: null }, baseline.asOf);
     expect(s.totals.goals).toBe(messi.totals.goals + 5);
     expect(s.liveDelta.goals).toBe(3);
@@ -99,8 +109,30 @@ describe('buildAppState', () => {
   it('assemble les deux joueurs', () => {
     const s = buildAppState(baseline, emptyLiveData(), info, new Date('2026-10-18T12:00:00Z'));
     expect(s.generatedAt).toBe('2026-10-18T12:00:00.000Z');
-    expect(s.players.messi.totals.goals).toBe(934);
+    expect(s.players.messi.totals.goals).toBe(936);
     expect(s.players.ronaldo.totals.goals).toBe(981);
+  });
+});
+
+describe('taux de réussite par zone', () => {
+  const ronaldo = baseline.players.ronaldo;
+
+  it('part des références penalties et coups francs, sans données dans le jeu', () => {
+    const s = buildPlayerState(ronaldo, { completed: [], live: null, next: null }, baseline.asOf);
+    expect(s.conversion.penalty).toMatchObject({ scored: 184, attempts: 220, sufficient: true });
+    expect(s.conversion.penalty.rate).toBeCloseTo(184 / 220, 5);
+    expect(s.conversion.insideBox).toMatchObject({ attempts: 0, rate: null, sufficient: false });
+    expect(bestAndWorstZones(s.conversion)).toEqual({ best: 'penalty', worst: 'freeKick' });
+  });
+
+  it('classe les zones de jeu une fois l’échantillon suffisant', () => {
+    const attempts = emptyAttempts();
+    attempts.insideBox = { shots: MIN_ATTEMPTS_FOR_RANKING + 5, goals: 6 };
+    attempts.outsideBox = { shots: MIN_ATTEMPTS_FOR_RANKING, goals: 0 };
+    const m = match({ teamKey: 'al-nassr', goals: 6, goalDetails: [], attempts });
+    const s = buildPlayerState(ronaldo, { completed: [m], live: null, next: null }, baseline.asOf);
+    expect(s.conversion.insideBox.sufficient).toBe(true);
+    expect(bestAndWorstZones(s.conversion)).toEqual({ best: 'penalty', worst: 'outsideBox' });
   });
 });
 

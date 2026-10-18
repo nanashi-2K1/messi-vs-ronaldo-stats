@@ -15,10 +15,19 @@ import {
   type PlayerState,
   type SeasonLine,
   type TeamSplit,
+  type ZoneAttempts,
+  type ZoneRate,
 } from './types.ts';
+
+/** En dessous de ce nombre de tentatives, une zone n'est pas comparée aux autres. */
+export const MIN_ATTEMPTS_FOR_RANKING = 15;
 
 function countsOf<K extends string>(keys: readonly K[]): Record<K, number> {
   return Object.fromEntries(keys.map((k) => [k, 0])) as Record<K, number>;
+}
+
+export function emptyAttempts(): ZoneAttempts {
+  return Object.fromEntries(GOAL_ZONES.map((z) => [z, { shots: 0, goals: 0 }])) as ZoneAttempts;
 }
 
 export function emptyDelta(): Delta {
@@ -35,6 +44,8 @@ export function emptyDelta(): Delta {
     zones: countsOf(GOAL_ZONES),
     bodyParts: countsOf(BODY_PARTS),
     unclassifiedGoals: 0,
+    attempts: emptyAttempts(),
+    detailedMatches: 0,
   };
 }
 
@@ -67,7 +78,48 @@ export function addMatch(delta: Delta, m: PlayerMatch): Delta {
     if (g.bodyPart) delta.bodyParts[g.bodyPart] += 1;
   }
   delta.unclassifiedGoals += m.goals - classified;
+
+  if (m.attempts) {
+    delta.detailedMatches += 1;
+    for (const z of GOAL_ZONES) {
+      delta.attempts[z].shots += m.attempts[z].shots;
+      delta.attempts[z].goals += m.attempts[z].goals;
+    }
+  }
   return delta;
+}
+
+/**
+ * Taux de réussite par zone : penalties et coups francs partent des chiffres de
+ * référence, complétés par les matchs suivis ; la surface et le hors-surface en
+ * jeu ne sont connus que pour les matchs suivis avec fil d'actions détaillé.
+ */
+export function zoneRates(base: PlayerBaseline, delta: Delta): Record<GoalZone, ZoneRate> {
+  const rate = (scored: number, attempts: number, scope: string): ZoneRate => ({
+    scored,
+    attempts,
+    rate: attempts > 0 ? scored / attempts : null,
+    sufficient: attempts >= MIN_ATTEMPTS_FOR_RANKING,
+    scope,
+  });
+  const { penalty, freeKick } = base.conversion;
+  const a = delta.attempts;
+  const tracked = 'matchs suivis depuis la date de référence';
+  return {
+    penalty: rate(penalty.scored + a.penalty.goals, penalty.attempts + a.penalty.shots, penalty.scope),
+    freeKick: rate(freeKick.scored + a.freeKick.goals, freeKick.attempts + a.freeKick.shots, freeKick.scope),
+    insideBox: rate(a.insideBox.goals, a.insideBox.shots, tracked),
+    outsideBox: rate(a.outsideBox.goals, a.outsideBox.shots, tracked),
+  };
+}
+
+/** Meilleure et plus faible zone parmi celles dont l'échantillon est suffisant. */
+export function bestAndWorstZones(rates: Record<GoalZone, ZoneRate>): { best: GoalZone | null; worst: GoalZone | null } {
+  const ranked = GOAL_ZONES.filter((z) => rates[z].sufficient && rates[z].rate != null).sort(
+    (x, y) => (rates[y].rate ?? 0) - (rates[x].rate ?? 0),
+  );
+  if (ranked.length < 2) return { best: ranked[0] ?? null, worst: null };
+  return { best: ranked[0]!, worst: ranked.at(-1)! };
 }
 
 function addCounts<K extends string>(a: Record<K, number>, b: Record<K, number>): Record<K, number> {
@@ -134,6 +186,7 @@ export function buildPlayerState(base: PlayerBaseline, live: PlayerLiveData, asO
     seasons: mergeSeasons(base.seasons, counted),
     zones: addCounts<GoalZone>(base.zones.parts, delta.zones),
     bodyParts: addCounts<BodyPart>(base.bodyParts.parts, delta.bodyParts),
+    conversion: zoneRates(base, delta),
     recent: completed,
     live: current,
     next: live.next,

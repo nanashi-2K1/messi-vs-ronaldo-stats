@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { baseline } from '../shared/baseline.ts';
-import { GOAL_ZONES, PLAYER_IDS } from '../shared/types.ts';
+import { BODY_PARTS, GOAL_ZONES, PLAYER_IDS } from '../shared/types.ts';
 
 describe('cohérence des données de référence', () => {
   for (const id of PLAYER_IDS) {
@@ -27,6 +27,21 @@ describe('cohérence des données de référence', () => {
 
       it('la répartition par zone couvre tous les buts', () => {
         expect(GOAL_ZONES.reduce((s, z) => s + p.zones.parts[z], 0)).toBe(p.totals.goals);
+      });
+
+      it('la répartition pied / tête couvre tous les buts', () => {
+        expect(BODY_PARTS.reduce((s, b) => s + p.bodyParts.parts[b], 0)).toBe(p.totals.goals);
+      });
+
+      it('les taux de réussite de référence sont cohérents', () => {
+        const { penalty, freeKick, allShots } = p.conversion;
+        expect(penalty.scored).toBe(p.zones.parts.penalty);
+        for (const r of [penalty, freeKick, allShots]) expect(r.scored).toBeLessThanOrEqual(r.attempts);
+        expect(freeKick.scored).toBeLessThanOrEqual(p.zones.parts.freeKick);
+      });
+
+      it('aucune saison n’est estimée', () => {
+        expect(p.seasons.filter((s) => s.estimated)).toEqual([]);
       });
 
       it('les deux joueurs ont le même palmarès et les mêmes compétitions (pour la comparaison)', () => {

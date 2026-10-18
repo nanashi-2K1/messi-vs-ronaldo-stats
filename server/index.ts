@@ -3,41 +3,20 @@ import { stat } from 'node:fs/promises';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { dirname, extname, join, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { baseline } from '../shared/baseline.ts';
-import { buildAppState, emptyLiveData } from '../shared/merge.ts';
-import type { AppState, LiveInfo } from '../shared/types.ts';
-import { fileCache } from './cache.ts';
-import { createFetchJson } from './espn/client.ts';
-import { Tracker } from './tracker.ts';
+import type { AppState } from '../shared/types.ts';
+import { createTracker, liveEnabled, loadDotEnv, log, stateOf } from './runtime.ts';
+import { fileStore } from './store.ts';
+
+loadDotEnv();
 
 const PORT = Number(process.env.PORT ?? 8787);
 const HOST = process.env.HOST ?? '0.0.0.0';
 const isProd = process.env.NODE_ENV === 'production';
-const liveEnabled = (process.env.LIVE_PROVIDER ?? 'espn').toLowerCase() !== 'off';
 const here = dirname(fileURLToPath(import.meta.url));
 const projectRoot = isProd ? resolve(here, '../..') : resolve(here, '..');
 const clientDir = resolve(projectRoot, 'dist/client');
 
-const log = (message: string) => console.log(`[${new Date().toISOString()}] ${message}`);
-
-const disabledInfo: LiveInfo = {
-  provider: 'aucun',
-  status: 'disabled',
-  lastSuccessAt: null,
-  lastError: null,
-  refreshSeconds: null,
-};
-
-const tracker = liveEnabled
-  ? new Tracker({
-      fetchJson: createFetchJson(),
-      baselineAsOf: baseline.asOf,
-      cache: fileCache(process.env.CACHE_DIR ?? resolve(projectRoot, '.cache')),
-      log,
-      discoveryIntervalMs: Number(process.env.DISCOVERY_INTERVAL_MS ?? 10 * 60_000),
-      liveIntervalMs: Number(process.env.LIVE_INTERVAL_MS ?? 30_000),
-    })
-  : null;
+const tracker = createTracker(fileStore(process.env.CACHE_DIR ?? resolve(projectRoot, '.cache')));
 
 /* ------------------------------ État et diffusion ------------------------------ */
 
@@ -46,7 +25,8 @@ let fingerprint = fingerprintOf(state);
 const streams = new Set<ServerResponse>();
 
 function build(): AppState {
-  return buildAppState(baseline, tracker?.data ?? emptyLiveData(), tracker ? { ...tracker.info } : disabledInfo);
+  // Serveur Node : les mises à jour sont poussées en SSE.
+  return stateOf(tracker, true);
 }
 
 function fingerprintOf(s: AppState): string {
@@ -156,7 +136,7 @@ const server = createServer(async (req, res) => {
 
 server.listen(PORT, HOST, () => {
   log(`Messi vs Ronaldo prêt sur http://localhost:${PORT} (${isProd ? 'production' : 'développement'})`);
-  log(liveEnabled ? 'Suivi en direct : ESPN' : 'Suivi en direct désactivé (LIVE_PROVIDER=off)');
+  log(liveEnabled() ? `Suivi en direct : ${tracker?.info.provider}` : 'Suivi en direct désactivé (LIVE_PROVIDER=off)');
   tracker?.start();
 });
 

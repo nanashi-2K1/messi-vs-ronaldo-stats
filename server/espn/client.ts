@@ -25,8 +25,14 @@ export function createFetchJson(timeoutMs = 10_000): FetchJson {
 
 const ymd = (d: Date) => d.toISOString().slice(0, 10).replaceAll('-', '');
 
-export function scoreboardUrl(league: string, from: Date, to: Date): string {
-  return `${ESPN_BASE}/${league}/scoreboard?dates=${ymd(from)}-${ymd(to)}&limit=500`;
+/** Scoreboard d'une journée (ESPN refuse les plages de dates : 400). */
+export function scoreboardUrl(league: string, day: Date): string {
+  return `${ESPN_BASE}/${league}/scoreboard?dates=${ymd(day)}`;
+}
+
+/** Calendrier d'une équipe dans une compétition (« fixture=true » : matchs à venir). */
+export function scheduleUrl(league: string, teamId: string, query = ''): string {
+  return `${ESPN_BASE}/${league}/teams/${encodeURIComponent(teamId)}/schedule${query ? `?${query}` : ''}`;
 }
 
 export function summaryUrl(league: string, eventId: string): string {

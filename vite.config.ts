@@ -7,6 +7,8 @@ export default defineConfig({
   build: {
     outDir: 'dist/client',
     emptyOutDir: true,
+    // three.js (≈ 560 kB) est isolé dans le fichier « arcade », chargé après le premier affichage.
+    chunkSizeWarningLimit: 650,
   },
   test: {
     include: ['tests/**/*.test.ts'],

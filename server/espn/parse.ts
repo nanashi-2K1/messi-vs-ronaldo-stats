@@ -1,5 +1,6 @@
-import { classifyBodyPart, classifyGoalZone } from '../../shared/goalText.ts';
-import type { GoalDetail, MatchState, MatchTeam, PlayerMatch, TeamKind } from '../../shared/types.ts';
+import { classifyBodyPart, classifyGoalZone, isShotLine, shooterOf } from '../../shared/goalText.ts';
+import { emptyAttempts } from '../../shared/merge.ts';
+import type { GoalDetail, MatchState, MatchTeam, PlayerMatch, TeamKind, ZoneAttempts } from '../../shared/types.ts';
 
 /*
  * Lecture défensive des réponses JSON (non officielles) de site.api.espn.com.
@@ -153,6 +154,32 @@ function isGoal(k: KeyEvent): boolean {
   return (k.scoringPlay || /^goal|penalty - scored/i.test(k.typeText)) && !k.ownGoal && !k.shootout;
 }
 
+/**
+ * Tirs du joueur par zone, à partir du commentaire détaillé (« Attempt saved. … from outside the box … »).
+ * Renvoie null si le match n'a pas de commentaire tir par tir (cas du championnat saoudien chez ESPN).
+ */
+export function parseAttempts(root: Obj, isPlayerName: (name: string) => boolean): ZoneAttempts | null {
+  const lines = arr(root.commentary).map((c) => {
+    const o = obj(c);
+    const play = obj(o.play);
+    const first = obj(obj(arr(play.participants)[0]).athlete);
+    return { text: str(o.text) ?? '', shooter: str(first.displayName), period: num(obj(play.period).number) };
+  });
+  if (!lines.some((l) => /^attempt (missed|saved|blocked)\./i.test(l.text))) return null;
+
+  const attempts = emptyAttempts();
+  for (const l of lines) {
+    if (!isShotLine(l.text) || (l.period ?? 0) >= 5) continue;
+    const shooter = shooterOf(l.text) ?? l.shooter;
+    if (!shooter || !isPlayerName(shooter)) continue;
+    const zone = classifyGoalZone(l.text);
+    if (!zone) continue;
+    attempts[zone].shots += 1;
+    if (/^goal!/i.test(l.text)) attempts[zone].goals += 1;
+  }
+  return attempts;
+}
+
 export function parseSummary(json: unknown, ctx: SummaryContext, fallback?: ScoreboardEvent): PlayerMatch | null {
   const root = obj(json);
   const header = obj(root.header);
@@ -219,6 +246,9 @@ export function parseSummary(json: unknown, ctx: SummaryContext, fallback?: Scor
 
   const goals = stat('totalGoals') ?? goalEvents.length;
   const assists = stat('goalAssists') ?? assistEvents.length;
+  // Certains flux renvoient 0 tir malgré des buts (championnat saoudien) : la donnée est alors inexploitable.
+  const rawShots = stat('totalShots');
+  const shotsKnown = rawShots != null && rawShots >= goals;
   const starter = entry?.starter === true;
   const subbedIn = flag(entry?.subbedIn) || (stat('subIns') ?? 0) > 0;
   const played =
@@ -257,11 +287,12 @@ export function parseSummary(json: unknown, ctx: SummaryContext, fallback?: Scor
       : 0,
     goals,
     assists,
-    shots: stat('totalShots'),
-    shotsOnTarget: stat('shotsOnTarget'),
+    shots: shotsKnown ? rawShots : null,
+    shotsOnTarget: shotsKnown ? stat('shotsOnTarget') : null,
     yellowCards: stat('yellowCards') ?? 0,
     redCards: stat('redCards') ?? 0,
     goalDetails,
+    attempts: parseAttempts(root, (name) => ctx.playerName.test(name)),
   };
 }
 

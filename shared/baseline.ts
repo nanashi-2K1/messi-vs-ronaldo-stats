@@ -1,45 +1,26 @@
 import type { Baseline, Source } from './types.ts';
 
 /*
- * Données de référence : totaux de carrière (matchs officiels, club + sélection)
- * arrêtés au 16 octobre 2026. Tout match joué après cette date est ajouté
+ * Données de référence : totaux de carrière (matchs officiels, club + sélection,
+ * hors amicaux de club) relevés le 18 octobre 2026 sur messivsronaldo.app, après
+ * le doublé de Messi à Atlanta (17/10). Tout match joué ensuite est ajouté
  * automatiquement par le suivi en direct (voir server/tracker.ts).
  *
- * Les sites spécialisés ne comptent pas tous de la même façon (matchs amicaux,
- * passes décisives « Opta » ou « Transfermarkt »...). Les totaux principaux
- * proviennent d'une seule source (messivsronaldo.app) pour rester cohérents ;
- * les répartitions détaillées (zones, pied/tête, triplés) sont des compilations
- * signalées comme approximatives dans l'interface.
+ * Une seule source pour les totaux, les zones, le pied/la tête et les saisons :
+ * les chiffres sont cohérents entre eux (sommes vérifiées par les tests). Les
+ * passes décisives varient selon les sites (méthode Opta ou Transfermarkt).
  */
 
+const MVR = 'https://www.messivsronaldo.app';
 const SRC = {
-  mvr: { label: 'messivsronaldo.app — totaux carrière, minutes, passes décisives', url: 'https://www.messivsronaldo.app/' },
-  mvrFootball: { label: 'messivsronaldo.football — pied, tête, hors surface', url: 'https://messivsronaldo.football/stats' },
-  planetPens: {
-    label: 'Planet Football — penalties en carrière',
-    url: 'https://www.planetfootball.com/stats-tables/lionel-messi-cristiano-ronaldo-penalties-non-career-goalscoring-stats-records',
-  },
-  mxrFreeKicks: { label: 'messixronaldo.com — coups francs', url: 'https://messixronaldo.com/messi-vs-ronaldo-free-kicks-penalties/' },
-  yahoo930: {
-    label: 'Yahoo Sports — 930e but de Messi, 75e sur coup franc (20/09/2026)',
-    url: 'https://sports.yahoo.com/articles/watch-lionel-messi-reaches-930-022904987.html',
-  },
-  messistat: { label: 'Messistat — Messi à l’Inter Miami', url: 'https://www.messistat.com/en' },
-  espn981: {
-    label: 'ESPN — 981e but de Ronaldo, 134e avec Al Nassr (12/10/2026)',
-    url: 'https://www.espn.com/soccer/story/_/id/50168555/ronaldo-nets-al-nassr-first-afc-champions-league-win',
-  },
+  mvr: { label: 'messivsronaldo.app — totaux, minutes, triplés, zones, pied/tête', url: `${MVR}/` },
+  mvrSeasons: { label: 'messivsronaldo.app — saisons en club', url: `${MVR}/club-stats/` },
+  mvrPens: { label: 'messivsronaldo.app — penalties (hors séances de tirs au but)', url: `${MVR}/detailed-stats/penalties/` },
+  mvrFreeKicks: { label: 'messivsronaldo.app — coups francs et taux de réussite', url: `${MVR}/detailed-stats/free-kicks/` },
+  mvrShots: { label: 'messivsronaldo.app — conversion des tirs', url: `${MVR}/detailed-stats/shot-conversion/` },
   uefaIntl: {
     label: 'UEFA — records internationaux (146 buts / 234 sélections ; Messi 126 / 208)',
     url: 'https://www.uefa.com/european-qualifiers/news/026a-1297500e1b34-a17bbbcad258-1000--cristiano-ronaldo-all-time-leading-scorer-in-men-s-interna/',
-  },
-  elGrafico: {
-    label: 'El Gráfico — triplés en carrière',
-    url: 'https://www.elgrafico.com.ar/articulo/lionel-messi/63144/cristiano-ronaldo-vs-lionel-messi-%C2%BFquien-anoto-mas-hat-trick%3F',
-  },
-  espnTracker2025: {
-    label: 'ESPN — saison 2025 de Messi (43 buts en 49 matchs)',
-    url: 'https://www.espn.com/soccer/story/_/id/43935337/lionel-messi-2025-tracker-inter-miami-games-goals-assists-stats',
   },
   wc2026: {
     label: 'Goal — bilan de la Coupe du monde 2026',
@@ -48,7 +29,7 @@ const SRC = {
 } satisfies Record<string, Source>;
 
 export const baseline: Baseline = {
-  asOf: '2026-10-16T23:59:59Z',
+  asOf: '2026-10-18T10:00:00Z',
   sources: Object.values(SRC),
   players: {
     messi: {
@@ -62,12 +43,12 @@ export const baseline: Baseline = {
       preferredFoot: 'gauche',
       heightCm: 170,
       currentClub: 'Inter Miami CF',
-      totals: { apps: 1180, goals: 934, assists: 427, minutes: 97107 },
-      hatTricks: { count: 62, approximate: true, source: SRC.elGrafico },
+      totals: { apps: 1181, goals: 936, assists: 427, minutes: 97197 },
+      hatTricks: { count: 62, approximate: false, source: SRC.mvr },
       teams: [
         { key: 'barcelona', name: 'FC Barcelone', kind: 'club', from: '2004', to: '2021', apps: 778, goals: 672 },
         { key: 'psg', name: 'Paris Saint-Germain', kind: 'club', from: '2021', to: '2023', apps: 75, goals: 32 },
-        { key: 'inter-miami', name: 'Inter Miami CF', kind: 'club', from: '2023', to: null, apps: 119, goals: 104 },
+        { key: 'inter-miami', name: 'Inter Miami CF', kind: 'club', from: '2023', to: null, apps: 120, goals: 106 },
         { key: 'argentina', name: 'Argentine', kind: 'national', from: '2005', to: '2026', apps: 208, goals: 126 },
       ],
       seasons: [
@@ -91,23 +72,25 @@ export const baseline: Baseline = {
         { season: '2021/22', teamKey: 'psg', apps: 34, goals: 11 },
         { season: '2022/23', teamKey: 'psg', apps: 41, goals: 21 },
         { season: '2023', teamKey: 'inter-miami', apps: 14, goals: 11 },
-        { season: '2024', teamKey: 'inter-miami', apps: 25, goals: 23, estimated: true },
+        { season: '2024', teamKey: 'inter-miami', apps: 25, goals: 23 },
         { season: '2025', teamKey: 'inter-miami', apps: 49, goals: 43 },
-        { season: '2026', teamKey: 'inter-miami', apps: 31, goals: 27, estimated: true },
+        { season: '2026', teamKey: 'inter-miami', apps: 32, goals: 29 },
       ],
       zones: {
-        asOf: '2026-10-16',
-        parts: { penalty: 114, freeKick: 76, outsideBox: 105, insideBox: 639 },
-        source: SRC.planetPens,
-        note:
-          'Compilation : penalties (Planet Football, été 2026), coups francs (75e le 20/09/2026, puis un autre contre Columbus), ' +
-          'frappes hors surface dans le jeu (messivsronaldo.football). Le reste des buts est compté dans la surface.',
+        asOf: '2026-10-18',
+        parts: { penalty: 115, freeKick: 76, outsideBox: 109, insideBox: 636 },
+        source: SRC.mvr,
+        note: 'Hors surface : frappes dans le jeu, coups francs directs exclus. Surface : hors penalties.',
       },
       bodyParts: {
-        asOf: '2026-10',
-        parts: { left: 711, right: 109, head: 26 },
-        source: SRC.mvrFootball,
-        note: 'Buts classés par la source ; les autres surfaces (poitrine, genou…) ne sont pas comptées.',
+        asOf: '2026-10-18',
+        parts: { left: 787, right: 113, head: 32, other: 4 },
+        source: SRC.mvr,
+      },
+      conversion: {
+        penalty: { scored: 115, attempts: 150, scope: 'carrière, hors tirs au but', source: SRC.mvrPens },
+        freeKick: { scored: 50, attempts: 538, scope: 'coups francs directs en championnat', source: SRC.mvrFreeKicks },
+        allShots: { scored: 576, attempts: 3139, scope: 'championnat + Ligue des champions depuis 2009/10', source: SRC.mvrShots },
       },
       competitions: [
         { label: 'Ligue des champions', goals: 129, apps: 163 },
@@ -116,14 +99,21 @@ export const baseline: Baseline = {
         { label: 'Liga (Espagne)', goals: 474, apps: 520 },
       ],
       honours: [
-        { label: 'Ballon d’Or', count: 8, detail: '2009, 2010, 2011, 2012, 2015, 2019, 2021, 2023' },
-        { label: 'Coupe du monde', count: 1, detail: '2022' },
-        { label: 'Titre continental en sélection', count: 2, detail: 'Copa América 2021, 2024' },
-        { label: 'Ligue des champions', count: 4, detail: '2006, 2009, 2011, 2015' },
-        { label: 'Championnats nationaux', count: 13, detail: '10 Liga, 2 Ligue 1, 1 MLS Cup (2025)' },
-        { label: 'Coupe du monde des clubs', count: 3, detail: '2009, 2011, 2015' },
-        { label: 'Soulier d’or européen', count: 6, detail: '2010, 2012, 2013, 2017, 2018, 2019' },
-        { label: 'Or olympique', count: 1, detail: 'Pékin 2008' },
+        { id: 'ballon', label: 'Ballon d’Or', items: ['2009', '2010', '2011', '2012', '2015', '2019', '2021', '2023'] },
+        { id: 'wc', label: 'Coupe du monde', items: ['2022'] },
+        { id: 'cont', label: 'Titre continental en sélection', items: ['Copa América 2021', 'Copa América 2024'] },
+        { id: 'ucl', label: 'Ligue des champions', items: ['2006', '2009', '2011', '2015'] },
+        {
+          id: 'league',
+          label: 'Championnats nationaux',
+          items: [
+            'Liga 2005', 'Liga 2006', 'Liga 2009', 'Liga 2010', 'Liga 2011', 'Liga 2013', 'Liga 2015', 'Liga 2016', 'Liga 2018',
+            'Liga 2019', 'Ligue 1 2022', 'Ligue 1 2023', 'MLS Cup 2025',
+          ],
+        },
+        { id: 'cwc', label: 'Coupe du monde des clubs', items: ['2009', '2011', '2015'] },
+        { id: 'boot', label: 'Soulier d’or européen', items: ['2010', '2012', '2013', '2017', '2018', '2019'] },
+        { id: 'olym', label: 'Or olympique', items: ['Pékin 2008'] },
       ],
     },
     ronaldo: {
@@ -138,7 +128,7 @@ export const baseline: Baseline = {
       heightCm: 187,
       currentClub: 'Al Nassr',
       totals: { apps: 1340, goals: 981, assists: 261, minutes: 109542 },
-      hatTricks: { count: 66, approximate: false, source: SRC.elGrafico },
+      hatTricks: { count: 66, approximate: false, source: SRC.mvr },
       teams: [
         { key: 'sporting', name: 'Sporting CP', kind: 'club', from: '2002', to: '2003', apps: 31, goals: 5 },
         { key: 'man-utd', name: 'Manchester United', kind: 'club', from: '2003', to: '2022', apps: 346, goals: 145 },
@@ -172,23 +162,25 @@ export const baseline: Baseline = {
         { season: '2022/23', teamKey: 'man-utd', apps: 16, goals: 3 },
         { season: '2022/23', teamKey: 'al-nassr', apps: 19, goals: 14 },
         { season: '2023/24', teamKey: 'al-nassr', apps: 51, goals: 50 },
-        { season: '2024/25', teamKey: 'al-nassr', apps: 41, goals: 35, estimated: true },
-        { season: '2025/26', teamKey: 'al-nassr', apps: 38, goals: 31, estimated: true },
-        { season: '2026/27', teamKey: 'al-nassr', apps: 8, goals: 4, estimated: true },
+        { season: '2024/25', teamKey: 'al-nassr', apps: 41, goals: 35 },
+        { season: '2025/26', teamKey: 'al-nassr', apps: 37, goals: 30 },
+        { season: '2026/27', teamKey: 'al-nassr', apps: 9, goals: 5 },
       ],
       zones: {
-        asOf: '2026-10-16',
-        parts: { penalty: 184, freeKick: 64, outsideBox: 68, insideBox: 665 },
-        source: SRC.planetPens,
-        note:
-          'Compilation : penalties (Planet Football, 184 sur 976 buts), coups francs (messixronaldo.com), ' +
-          'frappes hors surface dans le jeu (messivsronaldo.football). Le reste des buts est compté dans la surface.',
+        asOf: '2026-10-18',
+        parts: { penalty: 184, freeKick: 65, outsideBox: 72, insideBox: 660 },
+        source: SRC.mvr,
+        note: 'Hors surface : frappes dans le jeu, coups francs directs exclus. Surface : hors penalties.',
       },
       bodyParts: {
-        asOf: '2026-10',
-        parts: { left: 178, right: 605, head: 151 },
-        source: SRC.mvrFootball,
-        note: 'Buts classés par la source ; les autres surfaces (poitrine, genou…) ne sont pas comptées.',
+        asOf: '2026-10-18',
+        parts: { left: 186, right: 634, head: 158, other: 3 },
+        source: SRC.mvr,
+      },
+      conversion: {
+        penalty: { scored: 184, attempts: 220, scope: 'carrière, hors tirs au but', source: SRC.mvrPens },
+        freeKick: { scored: 39, attempts: 611, scope: 'coups francs directs en championnat', source: SRC.mvrFreeKicks },
+        allShots: { scored: 536, attempts: 3447, scope: 'championnat + Ligue des champions depuis 2009/10', source: SRC.mvrShots },
       },
       competitions: [
         { label: 'Ligue des champions', goals: 140, apps: 183 },
@@ -197,14 +189,18 @@ export const baseline: Baseline = {
         { label: 'Liga (Espagne)', goals: 311, apps: 292 },
       ],
       honours: [
-        { label: 'Ballon d’Or', count: 5, detail: '2008, 2013, 2014, 2016, 2017' },
-        { label: 'Coupe du monde', count: 0 },
-        { label: 'Titre continental en sélection', count: 1, detail: 'Euro 2016' },
-        { label: 'Ligue des champions', count: 5, detail: '2008, 2014, 2016, 2017, 2018' },
-        { label: 'Championnats nationaux', count: 8, detail: '3 Premier League, 2 Liga, 2 Serie A, 1 Saudi Pro League (2026)' },
-        { label: 'Coupe du monde des clubs', count: 4, detail: '2008, 2014, 2016, 2017' },
-        { label: 'Soulier d’or européen', count: 4, detail: '2008, 2011, 2014, 2015' },
-        { label: 'Or olympique', count: 0 },
+        { id: 'ballon', label: 'Ballon d’Or', items: ['2008', '2013', '2014', '2016', '2017'] },
+        { id: 'wc', label: 'Coupe du monde', items: [] },
+        { id: 'cont', label: 'Titre continental en sélection', items: ['Euro 2016'] },
+        { id: 'ucl', label: 'Ligue des champions', items: ['2008', '2014', '2016', '2017', '2018'] },
+        {
+          id: 'league',
+          label: 'Championnats nationaux',
+          items: ['Premier League 2007', 'Premier League 2008', 'Premier League 2009', 'Liga 2012', 'Liga 2017', 'Serie A 2019', 'Serie A 2020', 'Saudi Pro League 2026'],
+        },
+        { id: 'cwc', label: 'Coupe du monde des clubs', items: ['2008', '2014', '2016', '2017'] },
+        { id: 'boot', label: 'Soulier d’or européen', items: ['2008', '2011', '2014', '2015'] },
+        { id: 'olym', label: 'Or olympique', items: [] },
       ],
     },
   },
